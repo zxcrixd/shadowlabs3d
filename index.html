@@ -800,6 +800,14 @@ async function googleLogin(){
   }
   const btn = document.getElementById('googleBtn');
   if (btn) btn.disabled = true;
+     // 💾 СОХРАНЯЕМ СОСТОЯНИЕ перед редиректом
+  sessionStorage.setItem('sl_return_state', JSON.stringify({
+    tab: document.querySelector('.nav-item.active')?.dataset.tab || 'home',
+    category: currentCategory || 'Все',
+    search: document.getElementById('searchInput')?.value || '',
+    scroll: document.getElementById('mainScroll')?.scrollTop || 0,
+    modalOpen: document.getElementById('authModal')?.classList.contains('active')
+  }));
 
   try {
     // ВСЕГДА используем redirect — надёжно на всех устройствах
