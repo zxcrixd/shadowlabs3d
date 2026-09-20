@@ -362,7 +362,7 @@ main::-webkit-scrollbar{display:none}
     getAuth, signInWithPopup, signInWithRedirect, getRedirectResult,
     GoogleAuthProvider, onAuthStateChanged, signOut
   } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-  import { getDatabase, ref, set, get, onValue, update } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
+  import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyDcWZfCpet7SVlusGFfB_gQPWYoc7ZjHek",
@@ -380,37 +380,38 @@ main::-webkit-scrollbar{display:none}
   const googleProvider = new GoogleAuthProvider();
   googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-  // Делаем всё доступным из обычного script
   window.fb = {
     auth, db, googleProvider,
     signInWithPopup, signInWithRedirect, getRedirectResult,
-    onAuthStateChanged, signOut,
-    ref, set, get, onValue, update,
-    ready: false
+    onAuthStateChanged, signOut, ref, set, get, onValue,
+    ready: false, productsLoaded: false
   };
 
-  // Проверяем, вернулся ли пользователь после редиректа (мобильный вход)
+  // ⚠️ ВАЖНО: сначала обрабатываем редирект, потом всё остальное
   getRedirectResult(auth).then((result) => {
     if (result && result.user) {
       console.log('✅ Google redirect success:', result.user.displayName);
+      // Сбрасываем кнопку — она могла остаться disabled
+      const btn = document.getElementById('googleBtn');
+      if (btn) btn.disabled = false;
       if (window.onGoogleUser) window.onGoogleUser(result.user);
     }
   }).catch((err) => {
-    console.warn('Redirect error:', err);
-    if (err.code === 'auth/unauthorized-domain' && window.onGoogleError) {
-      window.onGoogleError('Домен не разрешён. Добавь ' + location.hostname + ' в Firebase → Authentication → Settings → Authorized domains');
-    }
+    console.error('Redirect error:', err);
+    const btn = document.getElementById('googleBtn');
+    if (btn) btn.disabled = false;
+    let msg = 'Ошибка входа';
+    if (err.code === 'auth/unauthorized-domain') msg = 'Домен не разрешён в Firebase';
+    if (err.code === 'auth/network-request-failed') msg = 'Нет интернета';
+    if (window.onGoogleError) window.onGoogleError(msg);
   });
 
-  // Слушаем состояние входа
   onAuthStateChanged(auth, (user) => {
-    if (user && window.onGoogleUser) {
-      window.onGoogleUser(user);
-    }
+    if (user && window.onGoogleUser) window.onGoogleUser(user);
   });
 
   window.fb.ready = true;
-  console.log('🔥 Firebase подключён. Проект:', firebaseConfig.projectId);
+  console.log('🔥 Firebase подключён');
 </script>
 
 <div id="particles"></div>
@@ -594,6 +595,7 @@ const RELEASE_DATE=new Date('2026-09-18T00:00:00').getTime(),BADGE_SHOW_DAYS=7;
 function isNewFeature(){return Date.now()<RELEASE_DATE+BADGE_SHOW_DAYS*24*60*60*1000}
 function newBadgeHtml(){return isNewFeature()?'<span class="new-pulse">NEW</span>':''}
 const CHANGELOG=[
+  {version:'1.3.1',date:'20.09.2026',title:'Обновление каталога',items:['НОВЫЕ ТОВАРЫ В КАТАЛОГЕ🔥']
   {version:'1.3',date:'20.09.2026',title:'Google-вход',items:['🔵 Кнопка «Войти через Google»','🔥 Firebase подключён','🌐 Синхронизация (скоро)']},
   {version:'1.2',date:'19.09.2026',title:'Обновление каталога',items:['📦 Полка с ключами и кашпо','🖼️ Фото товаров']},
   {version:'1.1',date:'19.09.2026',title:'Новая навигация',items:['🏠 Вкладка «Главная»','📂 Категории','👤 Профиль-хаб','🎨 10 тем']},
@@ -691,7 +693,7 @@ const PRODUCTS = [
   {id:54, icon:'🐹', img:'img/flexi_hamster.jpg', name:'Шарнирный хомячок', price:300, weight:50, category:'Игрушки', desc:'Миниатюрный шарнирный хомяк. ⚠️ Не оставлять на солнце и в горячей воде.'},
 
   // ═══ Животные: Дикая природа (21.02.2027) ═══
-  {id:55, icon:'🐙', img:'img/flexi_octopus.jpg', name:'Гибкий осьминог PIP', price:450, weight:100, category:'Игрушки', desc:'Осьминог с изгибающимися щупальцами. Для игры в руках (не для воды). ⚠️ Не оставлять на солнце и в горячей воде.'},
+  {id:55, icon:'🐙', img:'img/flexi_octopus.jpg', name:'Гибкий осьминог PIP (временно недоступно)', price:450, weight:100, category:'Игрушки', desc:'Осьминог с изгибающимися щупальцами. Для игры в руках (не для воды). ⚠️ Не оставлять на солнце и в горячей воде.'},
   {id:56, icon:'🦈', img:'img/flexi_shark.jpg', name:'Подвижная акула Flexi', price:350, weight:70, category:'Игрушки', desc:'Акула с открывающейся пастью и подвижным хвостом. ⚠️ Не оставлять на солнце и в горячей воде.'},
   {id:57, icon:'🦎', img:'img/flexi_gecko.jpg', name:'Гибкий геккон Flexi', price:300, weight:50, category:'Игрушки', desc:'Гибкая ящерица с подвижными суставами. ⚠️ Не оставлять на солнце и в горячей воде.'},
 
@@ -788,27 +790,21 @@ function updateGameCards(){document.querySelectorAll('.game-card.locked').forEac
 
 /* ═══ GOOGLE АВТОРИЗАЦИЯ ═══ */
 async function googleLogin(){
-  if (!window.fb || !window.fb.ready){ toast('Firebase загружается, подожди...', 'error'); return; }
+  if (!window.fb || !window.fb.ready){
+    toast('Firebase загружается, подожди...', 'error');
+    return;
+  }
   const btn = document.getElementById('googleBtn');
   if (btn) btn.disabled = true;
 
   try {
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobile){
-      // На мобильных — redirect (надёжнее)
-      await window.fb.signInWithRedirect(window.fb.auth, window.fb.googleProvider);
-    } else {
-      // На десктопе — popup
-      const result = await window.fb.signInWithPopup(window.fb.auth, window.fb.googleProvider);
-      window.onGoogleUser(result.user);
-    }
+    // ВСЕГДА используем redirect — надёжно на всех устройствах
+    // На десктопе тоже работает, просто уводит на страницу Google и возвращает назад
+    await window.fb.signInWithRedirect(window.fb.auth, window.fb.googleProvider);
   } catch (err){
     console.error('Google login error:', err);
     if (btn) btn.disabled = false;
-    let msg = 'Ошибка входа';
-    if (err.code === 'auth/popup-closed-by-user') msg = 'Окно закрыто';
-    else if (err.code === 'auth/unauthorized-domain') msg = 'Домен не разрешён в Firebase';
-    else if (err.code === 'auth/popup-blocked') msg = 'Всплывающее окно заблокировано';
+    let msg = 'Ошибка входа: ' + (err.message || err.code);
     toast(msg, 'error');
   }
 }
